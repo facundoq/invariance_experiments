@@ -209,3 +209,5 @@ config.env
 
 data/
 mlruns/
+mlflow.db
+config.env
