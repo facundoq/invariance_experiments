@@ -9,6 +9,7 @@ class E2CNNConfig:
     n_classes: int = 10
     num_rotations: int = 8
     input_size: int = 224
+    width_scale: int = 4 # Base multiplier for regular representations
 
 class E2EquivariantCNN(nn.Module):
     def __init__(self, config: E2CNNConfig):
@@ -22,7 +23,8 @@ class E2EquivariantCNN(nn.Module):
         self.input_type = in_type
         
         # Intermediate: regular representation
-        out_type = enn.FieldType(self.r2_space, 4 * [self.r2_space.regular_repr])
+        w = config.width_scale
+        out_type = enn.FieldType(self.r2_space, w * [self.r2_space.regular_repr])
         
         self.block1 = enn.SequentialModule(
             enn.MaskModule(in_type, config.input_size, margin=1),
@@ -34,7 +36,7 @@ class E2EquivariantCNN(nn.Module):
         self.pool1 = enn.PointwiseMaxPool(out_type, kernel_size=2)
         
         # More channels
-        out_type2 = enn.FieldType(self.r2_space, 8 * [self.r2_space.regular_repr])
+        out_type2 = enn.FieldType(self.r2_space, (w * 2) * [self.r2_space.regular_repr])
         self.block2 = enn.SequentialModule(
             enn.R2Conv(out_type, out_type2, kernel_size=3, padding=1, bias=False),
             enn.InnerBatchNorm(out_type2),
@@ -42,14 +44,15 @@ class E2EquivariantCNN(nn.Module):
         )
         
         # Map to trivial representation (invariant)
-        invariant_type = enn.FieldType(self.r2_space, 64 * [self.r2_space.trivial_repr])
+        fc_dim = w * 16
+        invariant_type = enn.FieldType(self.r2_space, fc_dim * [self.r2_space.trivial_repr])
         self.block3 = enn.SequentialModule(
             enn.R2Conv(out_type2, invariant_type, kernel_size=3, padding=1, bias=False),
             enn.InnerBatchNorm(invariant_type),
             enn.ReLU(invariant_type, inplace=True)
         )
         
-        self.fully_connected = nn.Linear(64, config.n_classes)
+        self.fully_connected = nn.Linear(fc_dim, config.n_classes)
 
     def forward(self, x):
         # Convert input tensor to geometric tensor
